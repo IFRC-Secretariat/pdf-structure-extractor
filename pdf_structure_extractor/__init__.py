@@ -1,0 +1,1 @@
+from pdf_structure_extractor.document import Document
