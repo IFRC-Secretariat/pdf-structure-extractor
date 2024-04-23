@@ -7,6 +7,7 @@ from pdf_structure_extractor import utils, definitions
 
 
 class Line(pd.Series):
+
     @property
     def _constructor(self):
         return Line
@@ -15,41 +16,21 @@ class Line(pd.Series):
     def _constructor_expanddim(self):
         return Lines
 
-    def more_titley(self, title, nontitle):
+    def calculate_font_importance(self):
         """
-        Check if line is more titley, or just as titley, as title.
-        Use nontitle to check what a title looks like.
-        Don't consider titles in images as titles.
         """
-        # Don't consider titles in images as titles
-        if self['img']:
-            return False
+        # Fontsize is the most important
+        title_score = self['double_fontsize_int']*100
 
-        # If line is larger, it is more titley
-        if self['double_fontsize_int'] > max(title['double_fontsize_int'], nontitle['double_fontsize_int']):
-            return True
+        # Fontweight less important than fontsize
+        if self['bold']:
+            title_score += 10
 
-        if self['double_fontsize_int'] == title['double_fontsize_int']:
+        # Uppercase is least important
+        if self['text'].isupper():
+            title_score += 1
 
-            # Bolder = more titley
-            if title['bold'] and not self['bold']:
-                return False
-            if not title['bold'] and self['bold']:
-                return True
-
-            # Same boldness, uppercase = more titley
-            if title['text'].isupper() and not self['text'].isupper():
-                return False
-            if self['text'].isupper() and not title['text'].isupper():
-                return True
-
-            # Same boldness and case, compare with nontitle
-            if title['double_fontsize_int'] > nontitle['double_fontsize_int']:
-                return True
-            if title['bold'] and not nontitle['bold']:
-                return True
-
-        return False
+        return title_score
 
     def is_sentence_end(self):
         """
@@ -96,9 +77,12 @@ class Lines(pd.DataFrame):
     def __init__(self, *args, **kwargs):
         super(Lines,  self).__init__(*args, **kwargs)
 
+        # Add integer fontsize (double to keep half sizes)
         if 'size' in self.columns:
             if 'double_fontsize_int' not in self.columns:
                 self['double_fontsize_int'] = (self['size'].astype(float)*2).round(0).astype('Int64')
+
+        # Add style string
         if (
             ('font' in self.columns) and
             ('double_fontsize_int' in self.columns) and
@@ -109,6 +93,26 @@ class Lines(pd.DataFrame):
                             self['double_fontsize_int'].astype(str)+', ' +\
                             self['color'].astype(str)+', ' +\
                             self['highlight_color'].astype(str)
+
+        # Add font importance based on size, boldness, and uppercase, and level
+        if (
+            ('double_fontsize_int' in self.columns) and
+            ('bold' in self.columns) and
+            ('text' in self.columns) and
+            ('font_importance' not in self.columns)
+        ):
+            self['font_importance'] = self.apply(
+                lambda row: row.calculate_font_importance(),
+                axis=1
+            )
+            levels = sorted(self['font_importance'].unique())
+            mode = self['font_importance'].mode().iloc[0]
+            mode_position = levels.index(mode)
+            levels = {
+                level: (i - mode_position)
+                for i, level in enumerate(levels)
+            }
+            self['level'] = self['font_importance'].map(levels)
 
     @property
     def _constructor(self):
@@ -324,14 +328,15 @@ class Lines(pd.DataFrame):
         titles = self.dropna(subset=['text'])\
                      .loc[
                          (self['span_number'] == 0) &
-                         (self['text'].apply(utils.is_text_title))
+                         (self['text'].apply(utils.is_text_title)) &
+                         (self['img'] is not True)
                      ]
 
         return titles
 
     @cached_property
     def body_style(self):
-        return self['style'].value_counts().idxmax()
+        return self.loc[self['level']==0, 'style'].value_counts().idxmax()
 
     @cached_property
     def headings(self):
@@ -339,7 +344,7 @@ class Lines(pd.DataFrame):
         Filter titles to greater than body text.
         """
         # Assume that the body text is most common, and drop titles not bigger than this
-        headings = self.titles.loc[self.titles['style'] != self.body_style]
+        headings = self.titles.loc[self.titles['style'] > self.body_style]
 
         return headings
 
