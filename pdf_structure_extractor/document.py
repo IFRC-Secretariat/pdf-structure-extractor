@@ -153,6 +153,9 @@ class Document:
         # Remove date superscript (th, st, etc)
         lines = self.remove_date_superscripts(lines=lines)
 
+        # Get the structure
+        lines = self.get_structure(lines=lines)
+
         return lines
 
     def remove_photo_blocks(self, lines):
@@ -336,3 +339,48 @@ class Document:
     @cached_property
     def headings(self):
         return self.lines.headings
+
+    def get_structure(self, lines):
+        """
+        Get the document structure in sections and subsections.
+        """
+        # Calculate levels in the document, where 0 is body text, and higher number is higher heading
+        levels = sorted(lines['font_importance'].unique())
+        mode = lines['font_importance'].mode().iloc[0]
+        mode_position = levels.index(mode)
+        levels_order = {
+            level: (i - mode_position)
+            for i, level in enumerate(levels)
+        }
+        lines['level'] = lines['font_importance'].map(levels_order)
+
+        # Get heading levels: h1, h2, etc.
+        heading_levels = sorted(lines.headings['font_importance'].unique(), reverse=True)
+        heading_levels_order = {
+            level: i+1
+            for i, level in enumerate(heading_levels)
+        }
+        lines.loc[
+            lines.index.isin(lines.headings.index),
+            'heading_level'
+        ] = lines['font_importance'].map(heading_levels_order)
+
+        # Get the children of each heading, i.e. the lines within that section
+        def get_next_bigger_heading(row):
+            children_lines = lines.loc[row.name:].iloc[1:]
+            next_big_headings = children_lines.loc[
+                (children_lines['heading_level'] <= row['heading_level'])
+            ]
+            if not next_big_headings.empty:
+                next_big_heading = next_big_headings.iloc[0]
+                children_lines = children_lines.loc[:next_big_heading.name].iloc[:-1]
+            return children_lines.index.tolist()
+
+        lines['children'] = lines.apply(
+            lambda row:
+                None if row['heading_level'] != row['heading_level']
+                else get_next_bigger_heading(row),
+            axis=1
+        )
+
+        return lines

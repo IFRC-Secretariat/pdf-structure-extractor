@@ -105,14 +105,6 @@ class Lines(pd.DataFrame):
                 lambda row: row.calculate_font_importance(),
                 axis=1
             )
-            levels = sorted(self['font_importance'].unique())
-            mode = self['font_importance'].mode().iloc[0]
-            mode_position = levels.index(mode)
-            levels = {
-                level: (i - mode_position)
-                for i, level in enumerate(levels)
-            }
-            self['level'] = self['font_importance'].map(levels)
 
     @property
     def _constructor(self):
@@ -322,7 +314,7 @@ class Lines(pd.DataFrame):
     @cached_property
     def titles(self):
         """
-        Get all titles in the documents
+        Get all titles in the documents: text starting with a capital letter.
         """
         # Get all lines starting with capital letter
         titles = self.dropna(subset=['text'])\
@@ -335,16 +327,16 @@ class Lines(pd.DataFrame):
         return titles
 
     @cached_property
-    def body_style(self):
-        return self.loc[self['level']==0, 'style'].value_counts().idxmax()
+    def body_font_importance(self):
+        return self['font_importance'].value_counts().idxmax()
 
     @cached_property
     def headings(self):
         """
-        Filter titles to greater than body text.
+        Get headings: text starts with a capital letter, and font importance is greater than the body text.
         """
         # Assume that the body text is most common, and drop titles not bigger than this
-        headings = self.titles.loc[self.titles['style'] > self.body_style]
+        headings = self.titles.loc[self.titles['font_importance'] > self.body_font_importance]
 
         return headings
 
