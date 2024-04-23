@@ -343,41 +343,6 @@ class Lines(pd.DataFrame):
 
         return headings
 
-    def cut_at_more_titley_title(self, title):
-        """
-        Cut the section lines at the first title that is more titley, or just as titley, as title.
-        Assume that the first line is the title of the section.
-        """
-        # Get title information
-        lines_with_chars = self.loc[self['text'].astype(str).str.contains('[a-zA-Z]')]
-        if lines_with_chars.empty:
-            return self
-        first_section_line_with_chars = lines_with_chars.iloc[0]
-
-        # Filter to only consider titles in section
-        section_titles = self.loc[self.index.isin(
-            [idx for idx in self.index if idx in self.titles.index]
-        )].sort_values(by=['total_y'])
-
-        # Get the next title which is more titley than the title
-        more_titley = None
-        for idx, line in section_titles.iterrows():
-            if line.more_titley(title, first_section_line_with_chars):
-                more_titley = line
-                break
-
-        # Cut the section at the minimum y position of the more_titley line
-        if more_titley is None:
-            return self
-
-        more_titley_line = self.loc[
-            (self['page_number'] == more_titley['page_number']) &
-            (self['block_number'] == more_titley['block_number']) &
-            (self['line_number'] == more_titley['line_number'])
-        ]
-
-        return self.loc[self['total_y'] < more_titley_line['total_y'].min()]
-
     def to_items(self):
         """
         Convert the Lines object to a list or dict of text.
