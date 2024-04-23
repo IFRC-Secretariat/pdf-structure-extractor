@@ -354,22 +354,11 @@ class Document:
         }
         lines['level'] = lines['font_importance'].map(levels_order)
 
-        # Get heading levels: h1, h2, etc.
-        heading_levels = sorted(lines.headings['font_importance'].unique(), reverse=True)
-        heading_levels_order = {
-            level: i+1
-            for i, level in enumerate(heading_levels)
-        }
-        lines.loc[
-            lines.index.isin(lines.headings.index),
-            'heading_level'
-        ] = lines['font_importance'].map(heading_levels_order)
-
         # Get the children of each heading, i.e. the lines within that section
         def get_next_bigger_heading(row):
             children_lines = lines.loc[row.name:].iloc[1:]
             next_big_headings = children_lines.loc[
-                (children_lines['heading_level'] <= row['heading_level'])
+                (children_lines['font_importance'] >= row['font_importance'])
             ]
             if not next_big_headings.empty:
                 next_big_heading = next_big_headings.iloc[0]
@@ -378,7 +367,7 @@ class Document:
 
         lines['children'] = lines.apply(
             lambda row:
-                None if row['heading_level'] != row['heading_level']
+                None if row.name not in lines.headings.index
                 else get_next_bigger_heading(row),
             axis=1
         )
